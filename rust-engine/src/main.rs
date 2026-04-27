@@ -291,7 +291,7 @@ async fn proxy_handler(
         }
         Action::Captcha => {
             if state.cfg.captcha_site_key.is_empty() {
-                proxy_request(&state, packet).await
+                proxy_upstream(&state, parts, body_bytes).await
             } else {
                 send_kafka_event(&state, src_ip, &packet.uri, &result.reason, result.confidence, "Captcha");
                 captcha_response(&packet.uri, &state.cfg.captcha_site_key)
