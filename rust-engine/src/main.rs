@@ -25,11 +25,13 @@ use hyper_util::rt::TokioExecutor;
 
 use crate::challenge::{block_response, captcha_response, js_challenge_response};
 use crate::detectors::captcha::CaptchaDetector;
+use crate::detectors::honeypot::{HoneypotDetector, HoneypotStore};
 use crate::detectors::js_challenge::JsChallengeDetector;
 use crate::kafka::{DetectionEvent, KafkaProducer};
 use crate::packet::Packet;
 use crate::pipeline::Pipeline;
 use crate::pipeline::detector::Action;
+use dashmap::DashMap;
 
 // ── AppState ──────────────────────────────────────────────────────────────
 
@@ -41,6 +43,7 @@ struct AppState {
     js_detector: Arc<JsChallengeDetector>,
     captcha_detector: Arc<CaptchaDetector>,
     http_client: Client<HttpConnector, Full<Bytes>>,
+    honeypot_caught: HoneypotStore,
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -69,6 +72,28 @@ fn now_secs() -> u64 {
 /// original_uri가 상대 경로인지 확인하여 오픈 리다이렉트를 방지한다.
 fn safe_redirect(uri: &str) -> &str {
     if uri.starts_with('/') { uri } else { "/" }
+}
+
+// 사람 눈에 보이지 않는 허니팟 링크 — CSS로 완전히 숨겨져 있음.
+const HONEYPOT_LINK: &str = concat!(
+    r#"<a href="/__mini-protection/trap" "#,
+    r#"style="display:none;position:absolute;left:-9999px" "#,
+    r#"tabindex="-1" aria-hidden="true"> </a>"#,
+);
+
+/// HTML 응답의 `</body>` 직전에 허니팟 링크를 주입한다.
+/// `</body>` 태그가 없으면 원본을 그대로 반환한다.
+fn inject_honeypot_link(body: Bytes) -> Bytes {
+    if let Ok(html) = std::str::from_utf8(&body) {
+        if let Some(pos) = html.rfind("</body>") {
+            let mut result = String::with_capacity(html.len() + HONEYPOT_LINK.len());
+            result.push_str(&html[..pos]);
+            result.push_str(HONEYPOT_LINK);
+            result.push_str(&html[pos..]);
+            return Bytes::from(result);
+        }
+    }
+    body
 }
 
 fn is_hop_by_hop(name: &str) -> bool {
@@ -126,8 +151,12 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!("JS_TOKEN_SECRET is using the default value — change before production use");
     }
 
+    let honeypot_caught: HoneypotStore = Arc::new(DashMap::new());
+
     let pipeline = Arc::new(Pipeline::new(vec![
+        Box::new(HoneypotDetector::new(Arc::clone(&honeypot_caught))),
         Box::new(detectors::ip_rate_limiter::IpRateLimiter::new()),
+        Box::new(detectors::path_scanner::PathScannerDetector::new()),
         Box::new(detectors::user_agent::UserAgentDetector::new()),
         Box::new(detectors::header_fingerprint::HeaderFingerprintDetector::new()),
         Box::new(detectors::credential_stuffing::CredentialStuffingDetector::new()),
@@ -147,12 +176,14 @@ async fn main() -> anyhow::Result<()> {
         js_detector,
         captcha_detector,
         http_client,
+        honeypot_caught,
     };
 
     let app = Router::new()
         .route("/__mini-protection/health", get(health_handler))
         .route("/__mini-protection/js-challenge/verify", post(js_verify_handler))
         .route("/__mini-protection/captcha/verify", post(captcha_verify_handler))
+        .route("/__mini-protection/trap", get(honeypot_trap_handler))
         .fallback(proxy_handler)
         .with_state(state);
 
@@ -172,6 +203,24 @@ async fn main() -> anyhow::Result<()> {
 /// 헬스체크 엔드포인트 — Docker / 로드밸런서 프로브용.
 async fn health_handler() -> Response {
     (StatusCode::OK, "OK").into_response()
+}
+
+// ── Honeypot Trap ─────────────────────────────────────────────────────────
+
+/// HTML 응답에 숨겨진 트랩 링크에 접근한 봇을 기록한다.
+///
+/// 사람 눈에는 보이지 않는 링크를 봇이 파싱해서 따라오면 해당 IP를 HoneypotStore에 기록.
+/// 404를 반환해 스마트한 봇도 탐지 사실을 알아채기 어렵게 한다.
+async fn honeypot_trap_handler(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Response {
+    let src_ip = extract_ip(&headers, peer);
+    state.honeypot_caught.insert(src_ip, ());
+    tracing::info!(ip = %src_ip, "HONEYPOT: bot trapped");
+    send_kafka_event(&state, src_ip, "/__mini-protection/trap", "Honeypot trap accessed", 1.0, "Block");
+    StatusCode::NOT_FOUND.into_response()
 }
 
 // ── JS Challenge Verify ───────────────────────────────────────────────────
@@ -403,337 +452,35 @@ async fn proxy_upstream(
         resp_parts.headers.remove(hop);
     }
 
-    Response::from_parts(resp_parts, axum::body::Body::from(resp_bytes))
-}
+    // HTML 응답에 허니팟 링크 주입
+    let is_html = resp_parts
+        .headers
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .map(|ct| ct.contains("text/html"))
+        .unwrap_or(false);
 
-// ── 단위 테스트 ───────────────────────────────────────────────────────────
+    let final_bytes = if is_html {
+        let injected = inject_honeypot_link(resp_bytes);
+        // Content-Length가 있으면 새 크기로 갱신
+        if resp_parts.headers.contains_key(header::CONTENT_LENGTH) {
+            if let Ok(v) = injected.len().to_string().parse() {
+                resp_parts.headers.insert(header::CONTENT_LENGTH, v);
+            }
+        }
+        injected
+    } else {
+        resp_bytes
+    };
+
+    Response::from_parts(resp_parts, axum::body::Body::from(final_bytes))
+}
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::http::HeaderValue;
-
-    fn peer(ip: &str) -> SocketAddr {
-        format!("{ip}:8080").parse().unwrap()
-    }
-
-    #[test]
-    fn extract_ip_uses_x_real_ip_header() {
-        let mut headers = HeaderMap::new();
-        headers.insert("x-real-ip", HeaderValue::from_static("5.6.7.8"));
-        assert_eq!(
-            extract_ip(&headers, peer("1.2.3.4")),
-            "5.6.7.8".parse::<IpAddr>().unwrap()
-        );
-    }
-
-    #[test]
-    fn extract_ip_falls_back_to_peer_addr() {
-        assert_eq!(
-            extract_ip(&HeaderMap::new(), peer("1.2.3.4")),
-            "1.2.3.4".parse::<IpAddr>().unwrap()
-        );
-    }
-
-    #[test]
-    fn extract_ip_ignores_invalid_x_real_ip() {
-        let mut headers = HeaderMap::new();
-        headers.insert("x-real-ip", HeaderValue::from_static("not-an-ip"));
-        assert_eq!(
-            extract_ip(&headers, peer("1.2.3.4")),
-            "1.2.3.4".parse::<IpAddr>().unwrap()
-        );
-    }
-
-    #[test]
-    fn screen_dims_valid_for_positive_values() {
-        assert!(is_valid_screen_dims(1920, 1080));
-        assert!(is_valid_screen_dims(1, 1));
-    }
-
-    #[test]
-    fn screen_dims_invalid_when_zero() {
-        assert!(!is_valid_screen_dims(0, 1080));
-        assert!(!is_valid_screen_dims(1920, 0));
-        assert!(!is_valid_screen_dims(0, 0));
-    }
-
-    #[test]
-    fn safe_redirect_preserves_absolute_paths() {
-        assert_eq!(safe_redirect("/foo/bar"), "/foo/bar");
-        assert_eq!(safe_redirect("/"), "/");
-        assert_eq!(safe_redirect("/?q=1"), "/?q=1");
-    }
-
-    #[test]
-    fn safe_redirect_blocks_external_urls() {
-        assert_eq!(safe_redirect("https://evil.com"), "/");
-        assert_eq!(safe_redirect("http://evil.com/steal"), "/");
-        assert_eq!(safe_redirect(""), "/");
-    }
-
-    #[test]
-    fn hop_by_hop_headers_are_identified() {
-        assert!(is_hop_by_hop("connection"));
-        assert!(is_hop_by_hop("transfer-encoding"));
-        assert!(is_hop_by_hop("upgrade"));
-        assert!(!is_hop_by_hop("content-type"));
-        assert!(!is_hop_by_hop("authorization"));
-        assert!(!is_hop_by_hop("x-real-ip"));
-    }
-}
-
-// ── 통합 테스트 ───────────────────────────────────────────────────────────
+#[path = "../tests/unit/main_unit.rs"]
+mod tests;
 
 #[cfg(test)]
-mod integration_tests {
-    use super::*;
-    use axum::body::Body;
-    use axum::extract::connect_info::MockConnectInfo;
-    use axum::http::Request;
-use tower::util::ServiceExt;
+#[path = "../tests/integration/proxy.rs"]
+mod integration_tests;
 
-    fn base_state() -> AppState {
-        // rdkafka producer 생성은 실제 브로커 없이도 성공한다 (연결은 lazy)
-        let kafka = KafkaProducer::new("localhost:29999", "test")
-            .expect("KafkaProducer creation must not require a live broker");
-        AppState {
-            pipeline: Arc::new(Pipeline::new(vec![])), // 비어있으면 모두 Pass
-            kafka: Arc::new(kafka),
-            cfg: Arc::new(config::Config {
-                listen_addr: "0.0.0.0:8080".to_string(),
-                upstream_url: "http://127.0.0.1:29998".to_string(), // 존재하지 않는 upstream
-                kafka_brokers: "localhost:29999".to_string(),
-                kafka_topic: "test".to_string(),
-                js_token_secret: "test-secret".to_string(),
-                captcha_site_key: String::new(),
-            }),
-            js_detector: Arc::new(JsChallengeDetector::with_secret(b"test-secret".to_vec())),
-            captcha_detector: Arc::new(CaptchaDetector::new()),
-            http_client: Client::builder(TokioExecutor::new()).build_http(),
-        }
-    }
-
-    fn test_app(state: AppState) -> Router {
-        Router::new()
-            .route("/__mini-protection/health", get(health_handler))
-            .route("/__mini-protection/js-challenge/verify", post(js_verify_handler))
-            .route("/__mini-protection/captcha/verify", post(captcha_verify_handler))
-            .fallback(proxy_handler)
-            .with_state(state)
-            .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 1234))))
-    }
-
-    fn form_req(uri: &str, body: &str) -> Request<Body> {
-        Request::builder()
-            .method("POST")
-            .uri(uri)
-            .header("content-type", "application/x-www-form-urlencoded")
-            .body(Body::from(body.to_string()))
-            .unwrap()
-    }
-
-    // ── health ────────────────────────────────────────────────────────────
-
-    #[tokio::test]
-    async fn health_returns_200() {
-        let resp = test_app(base_state())
-            .oneshot(Request::builder().uri("/__mini-protection/health").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-    }
-
-    // ── js_verify ─────────────────────────────────────────────────────────
-
-    #[tokio::test]
-    async fn js_verify_valid_dims_redirects_with_cookie() {
-        let resp = test_app(base_state())
-            .oneshot(form_req(
-                "/__mini-protection/js-challenge/verify",
-                "screen-width=1920&screen-height=1080&original_uri=/protected",
-            ))
-            .await
-            .unwrap();
-
-        assert_eq!(resp.status(), StatusCode::FOUND);
-        assert_eq!(resp.headers().get("location").unwrap(), "/protected");
-        let cookie = resp.headers().get("set-cookie").unwrap().to_str().unwrap();
-        assert!(cookie.contains("mini_protection_js_challenge="));
-        assert!(cookie.contains("HttpOnly"));
-    }
-
-    #[tokio::test]
-    async fn js_verify_zero_width_returns_400() {
-        let resp = test_app(base_state())
-            .oneshot(form_req(
-                "/__mini-protection/js-challenge/verify",
-                "screen-width=0&screen-height=1080&original_uri=/",
-            ))
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    }
-
-    #[tokio::test]
-    async fn js_verify_zero_height_returns_400() {
-        let resp = test_app(base_state())
-            .oneshot(form_req(
-                "/__mini-protection/js-challenge/verify",
-                "screen-width=1920&screen-height=0&original_uri=/",
-            ))
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    }
-
-    #[tokio::test]
-    async fn js_verify_missing_dims_defaults_to_400() {
-        // dims 없으면 serde default(0) → is_valid_screen_dims 실패
-        let resp = test_app(base_state())
-            .oneshot(form_req("/__mini-protection/js-challenge/verify", "original_uri=/"))
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    }
-
-    #[tokio::test]
-    async fn js_verify_external_uri_redirects_to_root() {
-        let resp = test_app(base_state())
-            .oneshot(form_req(
-                "/__mini-protection/js-challenge/verify",
-                "screen-width=1920&screen-height=1080&original_uri=https://evil.com",
-            ))
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::FOUND);
-        assert_eq!(resp.headers().get("location").unwrap(), "/");
-    }
-
-    // ── captcha_verify ────────────────────────────────────────────────────
-
-    #[tokio::test]
-    async fn captcha_verify_valid_token_redirects_with_cookie() {
-        let token = "a".repeat(100);
-        let body = format!("mini_protection_captcha_token={}&original_uri=/dashboard", token);
-        let resp = test_app(base_state())
-            .oneshot(form_req("/__mini-protection/captcha/verify", &body))
-            .await
-            .unwrap();
-
-        assert_eq!(resp.status(), StatusCode::FOUND);
-        assert_eq!(resp.headers().get("location").unwrap(), "/dashboard");
-        let cookie = resp.headers().get("set-cookie").unwrap().to_str().unwrap();
-        assert!(cookie.contains("mini_protection_captcha_pass="));
-        assert!(cookie.contains("HttpOnly"));
-    }
-
-    #[tokio::test]
-    async fn captcha_verify_short_token_returns_400() {
-        let resp = test_app(base_state())
-            .oneshot(form_req(
-                "/__mini-protection/captcha/verify",
-                "mini_protection_captcha_token=tooshort&original_uri=/",
-            ))
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    }
-
-    #[tokio::test]
-    async fn captcha_verify_empty_token_returns_400() {
-        let resp = test_app(base_state())
-            .oneshot(form_req("/__mini-protection/captcha/verify", "original_uri=/"))
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    }
-
-    // ── proxy ─────────────────────────────────────────────────────────────
-
-    #[tokio::test]
-    async fn proxy_pass_with_unreachable_upstream_returns_502() {
-        // 빈 파이프라인(Pass) + 존재하지 않는 upstream → 502
-        let resp = test_app(base_state())
-            .oneshot(Request::builder().uri("/some/path").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::BAD_GATEWAY);
-    }
-
-    #[tokio::test]
-    async fn proxy_block_action_returns_403() {
-        use crate::pipeline::detector::{DetectionResult, Detector};
-
-        struct AlwaysBlock;
-        impl Detector for AlwaysBlock {
-            fn detect(&self, _: &Packet) -> DetectionResult {
-                DetectionResult::block("test block", 1.0)
-            }
-            fn name(&self) -> &str { "always_block" }
-        }
-
-        let mut state = base_state();
-        state.pipeline = Arc::new(Pipeline::new(vec![Box::new(AlwaysBlock)]));
-
-        let resp = test_app(state)
-            .oneshot(Request::builder().uri("/attack").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
-    }
-
-    #[tokio::test]
-    async fn proxy_challenge_action_returns_js_challenge_html() {
-        use crate::pipeline::detector::{DetectionResult, Detector};
-
-        struct AlwaysChallenge;
-        impl Detector for AlwaysChallenge {
-            fn detect(&self, _: &Packet) -> DetectionResult {
-                DetectionResult::challenge("js required", 0.7)
-            }
-            fn name(&self) -> &str { "always_challenge" }
-        }
-
-        let mut state = base_state();
-        state.pipeline = Arc::new(Pipeline::new(vec![Box::new(AlwaysChallenge)]));
-
-        let resp = test_app(state)
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-
-        let body = resp.into_body().collect().await.unwrap().to_bytes();
-        let html = std::str::from_utf8(&body).unwrap();
-        assert!(html.contains("/__mini-protection/js-challenge/verify"));
-        assert!(html.contains("window.innerWidth"));
-    }
-
-    #[tokio::test]
-    async fn proxy_captcha_action_returns_captcha_html() {
-        use crate::pipeline::detector::{DetectionResult, Detector};
-
-        struct AlwaysCaptcha;
-        impl Detector for AlwaysCaptcha {
-            fn detect(&self, _: &Packet) -> DetectionResult {
-                DetectionResult::captcha("captcha required", 0.9)
-            }
-            fn name(&self) -> &str { "always_captcha" }
-        }
-
-        let mut state = base_state();
-        state.pipeline = Arc::new(Pipeline::new(vec![Box::new(AlwaysCaptcha)]));
-
-        let resp = test_app(state)
-            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK);
-
-        let body = resp.into_body().collect().await.unwrap().to_bytes();
-        let html = std::str::from_utf8(&body).unwrap();
-        assert!(html.contains("/__mini-protection/captcha/verify"));
-        assert!(html.contains("mini_protection_captcha_token"));
-    }
-}

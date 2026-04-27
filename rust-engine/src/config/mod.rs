@@ -34,26 +34,6 @@ impl Config {
     }
 }
 
-// ── 단위 테스트 ───────────────────────────────────────────────────────────
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn load_returns_ok() {
-        assert!(Config::load().is_ok());
-    }
-
-    #[test]
-    fn required_fields_are_non_empty() {
-        let cfg = Config::load().unwrap();
-        // 환경변수가 설정되지 않으면 기본값이 사용된다
-        assert!(!cfg.listen_addr.is_empty());
-        assert!(!cfg.upstream_url.is_empty());
-        assert!(!cfg.kafka_brokers.is_empty());
-        assert!(!cfg.kafka_topic.is_empty());
-        assert!(!cfg.js_token_secret.is_empty());
-        // captcha_site_key는 비어있을 수 있음
-    }
-}
+#[path = "../../tests/unit/config.rs"]
+mod tests;
