@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // ── 상수 ──────────────────────────────────────────────────────────────────
 
 const WINDOW_SECS: u64 = 60;
-const THRESHOLD: u32 = 10;
+const THRESHOLD: u32 = 30;
 
 // ── 누적 위반 차단 시간 (초) ──────────────────────────────────────────────
 
@@ -108,6 +108,7 @@ impl Detector for IpRateLimiter {
             entry.blocked_until = 0;
             entry.count = 0;
             entry.window_start = now;
+            entry.violation_cnt = 0;
         }
 
         // ── 4. Sliding Window 카운트 ───────────────────────────────────────
@@ -166,7 +167,7 @@ mod tests {
         for _ in 0..THRESHOLD {
             limiter.detect(&p);
         }
-        let result = limiter.detect(&p); // 11번째
+        let result = limiter.detect(&p); // 31번째
         assert!(result.is_block());
         assert!(result.reason.contains("violations: 1"));
     }
