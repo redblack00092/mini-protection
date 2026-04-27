@@ -10,7 +10,7 @@ aws ec2 run-instances \
   --instance-type t3.small \
   --key-name <your-key-pair> \
   --security-group-ids <sg-id> \
-  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=waf-engine}]'
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=mini-protection}]'
 ```
 
 **권장 사양**: t3.small (2 vCPU, 2GB RAM) 이상
@@ -40,7 +40,7 @@ aws ec2 authorize-security-group-ingress \
 ssh -i <pem-file> ubuntu@<EC2_PUBLIC_IP>
 
 # GitHub에 코드가 있는 경우
-export REPO_URL=https://github.com/YOUR_USERNAME/waf.git
+export REPO_URL=https://github.com/YOUR_USERNAME/mini-protection.git
 export JS_TOKEN_SECRET=$(openssl rand -hex 32)   # 반드시 변경
 export CAPTCHA_SITE_KEY=<your-recaptcha-site-key> # 선택사항
 
@@ -72,10 +72,10 @@ curl -H "User-Agent: python-requests/2.31.0" http://<EC2_PUBLIC_IP>/
 ssh -i <pem-file> ubuntu@<EC2_PUBLIC_IP>
 
 # WAF 엔진 로그
-docker compose -f /opt/waf/docker-compose.yml logs -f rust-engine
+docker compose -f /opt/mini-protection/docker-compose.yml logs -f rust-engine
 
 # Kafka 이벤트
-docker compose -f /opt/waf/docker-compose.yml exec kafka \
+docker compose -f /opt/mini-protection/docker-compose.yml exec kafka \
   kafka-console-consumer --bootstrap-server localhost:9092 \
   --topic waf-events --from-beginning
 ```
