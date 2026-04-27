@@ -282,10 +282,12 @@ async fn proxy_handler(
     match result.action {
         Action::Pass => proxy_upstream(&state, parts, body_bytes).await,
         Action::Block => {
+            tracing::info!(ip = %src_ip, uri = %packet.uri, reason = %result.reason, "BLOCK");
             send_kafka_event(&state, src_ip, &packet.uri, &result.reason, result.confidence, "Block");
             block_response(&result.reason)
         }
         Action::Challenge => {
+            tracing::info!(ip = %src_ip, uri = %packet.uri, reason = %result.reason, "CHALLENGE");
             send_kafka_event(&state, src_ip, &packet.uri, &result.reason, result.confidence, "Challenge");
             js_challenge_response(&packet.uri)
         }
@@ -293,6 +295,7 @@ async fn proxy_handler(
             if state.cfg.captcha_site_key.is_empty() {
                 proxy_upstream(&state, parts, body_bytes).await
             } else {
+                tracing::info!(ip = %src_ip, uri = %packet.uri, reason = %result.reason, "CAPTCHA");
                 send_kafka_event(&state, src_ip, &packet.uri, &result.reason, result.confidence, "Captcha");
                 captcha_response(&packet.uri, &state.cfg.captcha_site_key)
             }
