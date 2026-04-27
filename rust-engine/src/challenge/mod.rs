@@ -53,13 +53,36 @@ function onDone(t){{document.getElementById('ct').value=t;document.getElementByI
     Html(html).into_response()
 }
 
-/// 403 차단 응답 (JSON).
+/// 403 차단 응답 (HTML).
 pub fn block_response(reason: &str) -> Response {
-    let body = serde_json::json!({"error": "Forbidden", "reason": reason}).to_string();
+    let escaped = html_escape(reason);
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>403 Forbidden</title>
+  <style>
+    body {{ font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; }}
+    .box {{ text-align: center; padding: 40px; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.1); }}
+    h1 {{ font-size: 48px; margin: 0 0 8px; color: #e53e3e; }}
+    p {{ color: #555; margin: 4px 0; }}
+    small {{ color: #999; }}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>403</h1>
+    <p>Access Denied</p>
+    <small>{escaped}</small>
+  </div>
+</body>
+</html>"#
+    );
     (
         StatusCode::FORBIDDEN,
-        [(header::CONTENT_TYPE, "application/json")],
-        body,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
     )
         .into_response()
 }
