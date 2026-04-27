@@ -49,6 +49,22 @@ services:
       - ./backend/html:/usr/share/nginx/html:ro
     restart: unless-stopped
 
+  # ── 이벤트 뷰어 ──────────────────────────────────────────────────────────
+  event-viewer:
+    build:
+      context: ./event-viewer
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      KAFKA_BROKERS: "kafka:9092"
+      KAFKA_TOPIC: "mini-protection-events"
+    mem_limit: 128m
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ── Zookeeper (Kafka 의존성) ─────────────────────────────────────────────
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
