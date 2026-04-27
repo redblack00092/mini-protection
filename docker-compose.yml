@@ -21,7 +21,7 @@ services:
     environment:
       RUST_LOG: "info"
       LISTEN_ADDR: "0.0.0.0:8080"
-      UPSTREAM_URL: "http://backend:80"
+      UPSTREAM_URL: "http://backend:3000"
       KAFKA_BROKERS: "kafka:9092"
       KAFKA_TOPIC: "mini-protection-events"
       # 운영 환경에서는 반드시 교체할 것
@@ -40,14 +40,24 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # ── 테스트용 백엔드 ──────────────────────────────────────────────────────
+  # ── 백엔드: Gitea ────────────────────────────────────────────────────────
   backend:
-    image: nginx:1.25-alpine
+    image: gitea/gitea:1.21-rootless
     expose:
-      - "80"
+      - "3000"
+    environment:
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__server__DOMAIN: "${SERVER_DOMAIN:-localhost}"
+      GITEA__server__ROOT_URL: "http://${SERVER_DOMAIN:-localhost}/"
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__service__DISABLE_REGISTRATION: "false"
     volumes:
-      - ./backend/html:/usr/share/nginx/html:ro
+      - gitea_data:/var/lib/gitea
+    mem_limit: 256m
     restart: unless-stopped
+
+volumes:
+  gitea_data:
 
   # ── 이벤트 뷰어 ──────────────────────────────────────────────────────────
   event-viewer:
