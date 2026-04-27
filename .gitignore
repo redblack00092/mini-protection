@@ -19,5 +19,6 @@ Thumbs.db
 # Claude Code
 .claude/
 
-# 개발 로그
+# 개발 로그 및 개인 문서
 docs/claude-code-log.md
+docs/context.md
