@@ -1,0 +1,23 @@
+# Rust
+rust-engine/target/
+
+# 시크릿
+.env
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude Code
+.claude/
+
+# 개발 로그
+docs/claude-code-log.md
