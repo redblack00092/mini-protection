@@ -24,10 +24,7 @@ services:
       UPSTREAM_URL: "http://backend:3000"
       KAFKA_BROKERS: "kafka:9092"
       KAFKA_TOPIC: "mini-protection-events"
-      # 운영 환경에서는 반드시 교체할 것
-      # 운영: .env 파일에 JS_TOKEN_SECRET=<random> 설정
       JS_TOKEN_SECRET: "${JS_TOKEN_SECRET:-change-me-in-production}"
-      # reCAPTCHA v2 사이트 키 (없으면 CAPTCHA 페이지 위젯 미표시)
       CAPTCHA_SITE_KEY: "${CAPTCHA_SITE_KEY:-}"
     depends_on:
       kafka:
@@ -55,9 +52,6 @@ services:
       - gitea_data:/var/lib/gitea
     mem_limit: 256m
     restart: unless-stopped
-
-volumes:
-  gitea_data:
 
   # ── 이벤트 뷰어 ──────────────────────────────────────────────────────────
   event-viewer:
@@ -109,3 +103,6 @@ volumes:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+
+volumes:
+  gitea_data:
