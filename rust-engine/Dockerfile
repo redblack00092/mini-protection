@@ -33,11 +33,11 @@ RUN apt-get update && apt-get install -y \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/waf-engine /usr/local/bin/waf-engine
+COPY --from=builder /app/target/release/mini-protection-engine /usr/local/bin/mini-protection-engine
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
-    CMD wget -qO- http://localhost:8080/__waf/health || exit 1
+    CMD wget -qO- http://localhost:8080/__mini-protection/health || exit 1
 
-CMD ["waf-engine"]
+CMD ["mini-protection-engine"]
