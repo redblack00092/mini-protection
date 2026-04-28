@@ -23,3 +23,6 @@ CLAUDE.md
 # 개발 로그 및 개인 문서
 docs/claude-code-log.md
 docs/context.md
+
+# 로컬 배포 스크립트 (개인 EC2 정보 포함)
+push-deploy.sh
