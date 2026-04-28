@@ -25,7 +25,7 @@ services:
     environment:
       RUST_LOG: "info"
       LISTEN_ADDR: "0.0.0.0:8080"
-      UPSTREAM_URL: "http://backend:3000"
+      UPSTREAM_URL: "http://backend:8080"
       KAFKA_BROKERS: "kafka:9092"
       KAFKA_TOPIC: "mini-protection-events"
       JS_TOKEN_SECRET: "${JS_TOKEN_SECRET:-change-me-in-production}"
@@ -43,20 +43,11 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # ── 백엔드: Gitea ────────────────────────────────────────────────────────
+  # ── 백엔드: httpbin ──────────────────────────────────────────────────────
   backend:
-    image: gitea/gitea:1.21-rootless
+    image: mccutchen/go-httpbin
     expose:
-      - "3000"
-    environment:
-      GITEA__database__DB_TYPE: sqlite3
-      GITEA__server__DOMAIN: "${SERVER_DOMAIN:-waf.orhskim.duckdns.org}"
-      GITEA__server__ROOT_URL: "https://${SERVER_DOMAIN:-waf.orhskim.duckdns.org}/"
-      GITEA__server__HTTP_PORT: "3000"
-      GITEA__service__DISABLE_REGISTRATION: "false"
-    volumes:
-      - gitea_data:/var/lib/gitea
-    mem_limit: 256m
+      - "8080"
     restart: unless-stopped
 
   # ── 이벤트 뷰어 ──────────────────────────────────────────────────────────
@@ -110,5 +101,3 @@ services:
       retries: 10
     restart: unless-stopped
 
-volumes:
-  gitea_data:
