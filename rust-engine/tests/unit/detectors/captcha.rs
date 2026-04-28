@@ -26,7 +26,7 @@ fn packet_with_token(token: &str) -> Packet {
     let mut p = base_packet();
     p.js_challenge_passed = true;
     p.method = "POST".to_string();
-    p.body = format!("{RECAPTCHA_PARAM}={token}").into_bytes();
+    p.body = format!("{RECAPTCHA_PARAM}={token}").into();
     p
 }
 

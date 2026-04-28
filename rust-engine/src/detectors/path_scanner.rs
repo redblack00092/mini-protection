@@ -52,9 +52,17 @@ impl PathScannerDetector {
 
     fn is_scanner_path(uri: &str) -> bool {
         // 쿼리 파라미터 제거 후 소문자 변환
-        let path = uri.split('?').next().unwrap_or(uri).to_lowercase();
+        let path = uri.split('?').next().unwrap_or(uri).to_ascii_lowercase();
+        // path == p || (path.starts_with(p) && 다음 문자가 '/')
+        // — 이전 구현은 매 요청 패턴마다 format!("{}/", p)로 String을 alloc했음.
         SCANNER_PATHS.iter().any(|p| {
-            path == *p || path.starts_with(&format!("{}/", p))
+            if path == *p {
+                return true;
+            }
+            let pl = p.len();
+            path.len() > pl
+                && path.as_bytes()[pl] == b'/'
+                && path.as_bytes()[..pl] == *p.as_bytes()
         })
     }
 }

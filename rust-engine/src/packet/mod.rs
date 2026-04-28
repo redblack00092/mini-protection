@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use std::collections::HashMap;
 use std::net::IpAddr;
 
@@ -26,7 +27,9 @@ pub struct Packet {
     pub referer: String,
 
     // ── 바디 ──────────────────────────────────────────────────────
-    pub body: Vec<u8>,
+    /// `Bytes`는 내부 버퍼를 Arc로 공유하여 zero-copy clone 가능.
+    /// hyper/axum에서 받은 body를 추가 alloc 없이 그대로 보관한다.
+    pub body: Bytes,
 
     // ── 쿠키 ──────────────────────────────────────────────────────
     pub cookie: HashMap<String, String>,
@@ -58,7 +61,7 @@ impl Packet {
             user_agent: String::new(),
             host: String::new(),
             referer: String::new(),
-            body: Vec::new(),
+            body: Bytes::new(),
             cookie: HashMap::new(),
             js_challenge_passed: false,
             captcha_passed: false,

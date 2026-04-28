@@ -74,9 +74,13 @@ impl Detector for Ja3FingerprintDetector {
             return DetectionResult::block(format!("Blacklisted JA3: {ja3}"), 1.0);
         }
 
+        // is_browser_ua는 substring 검색을 4번 하므로 한 번만 평가해 재사용
+        let is_browser = is_browser_ua(&packet.user_agent);
+        let is_whitelisted = self.whitelist.contains(ja3);
+
         // 2. 화이트리스트 + 브라우저 UA → Pass
         //    화이트리스트만으로 Pass 시 UA를 위조한 봇이 우회 가능하므로 UA 검증 추가
-        if self.whitelist.contains(ja3) && is_browser_ua(&packet.user_agent) {
+        if is_whitelisted && is_browser {
             return DetectionResult::pass();
         }
 
@@ -84,9 +88,9 @@ impl Detector for Ja3FingerprintDetector {
         //    - 화이트리스트 JA3 + 비브라우저 UA: 브라우저 TLS를 흉내낸 봇 의심
         //    - 미등록 JA3 + 브라우저 UA: Chrome 110+/Firefox 114+ 랜덤화 가능성
         //    - 미등록 JA3 + 비브라우저 UA: 알 수 없는 클라이언트
-        let reason = if self.whitelist.contains(ja3) {
+        let reason = if is_whitelisted {
             format!("JA3 in whitelist but non-browser UA: {ja3}")
-        } else if is_browser_ua(&packet.user_agent) {
+        } else if is_browser {
             format!("Browser UA but JA3 ({ja3}) not in whitelist")
         } else {
             format!("Unknown UA and JA3: {ja3}")

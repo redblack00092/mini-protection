@@ -9,7 +9,7 @@ fn login_packet(src: &str, username: &str) -> Packet {
     let mut p = Packet::new(ip(src), ip("10.0.0.1"));
     p.method = "POST".to_string();
     p.uri = "/login".to_string();
-    p.body = format!("username={username}&password=test123").into_bytes();
+    p.body = format!("username={username}&password=test123").into();
     p
 }
 

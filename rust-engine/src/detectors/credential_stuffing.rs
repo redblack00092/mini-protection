@@ -35,8 +35,10 @@ fn now_secs() -> u64 {
 }
 
 fn is_login_endpoint(uri: &str) -> bool {
-    let uri_lower = uri.to_lowercase();
-    LOGIN_URIS.iter().any(|&ep| uri_lower.starts_with(ep))
+    // ASCII 영역만 case-insensitive 비교 — uri.to_lowercase() String alloc 회피
+    LOGIN_URIS.iter().any(|&ep| {
+        uri.len() >= ep.len() && uri.as_bytes()[..ep.len()].eq_ignore_ascii_case(ep.as_bytes())
+    })
 }
 
 // ── IP별 로그인 시도 카운터 ───────────────────────────────────────────────

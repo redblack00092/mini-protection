@@ -410,7 +410,8 @@ fn build_packet(parts: &axum::http::request::Parts, src_ip: IpAddr, body: &Bytes
         }
     }
 
-    packet.body = body.to_vec();
+    // Bytes::clone은 내부 Arc 카운터만 증가 — Vec<u8> alloc/copy 회피
+    packet.body = body.clone();
     packet
 }
 
