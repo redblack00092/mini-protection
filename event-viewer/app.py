@@ -175,7 +175,7 @@ HTML = """<!DOCTYPE html>
       return lines.map(({ text, hl }) => {
         const escaped = esc(text);
         return hl ? `<span class="hl">${escaped}</span>` : escaped;
-      }).join('\n');
+      }).join('\\n');
     }
 
     function showPacket(idx) {
