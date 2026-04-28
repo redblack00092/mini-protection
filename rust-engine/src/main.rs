@@ -157,6 +157,7 @@ async fn main() -> anyhow::Result<()> {
         Box::new(HoneypotDetector::new(Arc::clone(&honeypot_caught))),
         Box::new(detectors::ip_rate_limiter::IpRateLimiter::new()),
         Box::new(detectors::path_scanner::PathScannerDetector::new()),
+        Box::new(detectors::ja3_fingerprint::Ja3FingerprintDetector::new()),
         Box::new(detectors::user_agent::UserAgentDetector::new()),
         Box::new(detectors::header_fingerprint::HeaderFingerprintDetector::new()),
         Box::new(detectors::credential_stuffing::CredentialStuffingDetector::new()),
@@ -381,6 +382,12 @@ fn build_packet(parts: &axum::http::request::Parts, src_ip: IpAddr, body: &Bytes
     if let Some(cookie_header) = parts.headers.get("cookie") {
         if let Ok(cookie_str) = cookie_header.to_str() {
             packet.cookie = Packet::parse_cookies(cookie_str);
+        }
+    }
+
+    if let Some(ja3) = parts.headers.get("x-ja3-fingerprint") {
+        if let Ok(v) = ja3.to_str() {
+            packet.ja3_fingerprint = Some(v.to_string());
         }
     }
 

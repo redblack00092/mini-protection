@@ -37,6 +37,10 @@ pub struct Packet {
 
     // ── 위반 누적 카운트 ───────────────────────────────────────────
     pub violation_count: u32,
+
+    // ── TLS 지문 ───────────────────────────────────────────────────
+    /// nginx-module-ja3 또는 OpenResty가 계산한 JA3 해시 (X-JA3-Fingerprint 헤더)
+    pub ja3_fingerprint: Option<String>,
 }
 
 impl Packet {
@@ -59,6 +63,7 @@ impl Packet {
             js_challenge_passed: false,
             captcha_passed: false,
             violation_count: 0,
+            ja3_fingerprint: None,
         }
     }
 

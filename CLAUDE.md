@@ -27,12 +27,15 @@
 - 모든 pub 함수에 doc comment 작성
 
 ## 탐지 파이프라인 순서
-1. IpRateLimiter
-2. UserAgentDetector
-3. HeaderFingerprint
-4. CredentialStuffing
-5. JsChallenge
-6. Captcha
+1. HoneypotDetector
+2. IpRateLimiter
+3. PathScannerDetector
+4. Ja3FingerprintDetector
+5. UserAgentDetector
+6. HeaderFingerprint
+7. CredentialStuffing
+8. JsChallenge
+9. Captcha
 
 ## 탐지 모듈 추가 방법
 1. detectors/ 에 새 파일 생성
@@ -48,3 +51,6 @@
 ## Kafka 이벤트
 - 모든 탐지 결과를 Kafka로 스트리밍
 - Block/Challenge/Captcha 액션만 전송 (Pass는 제외)
+
+## docs 처리
+- 작업 완료 후 docs dir로 가서 필요한 내용 업데이트 할것
