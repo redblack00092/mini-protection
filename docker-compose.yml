@@ -30,6 +30,8 @@ services:
       KAFKA_TOPIC: "mini-protection-events"
       JS_TOKEN_SECRET: "${JS_TOKEN_SECRET:-change-me-in-production}"
       CAPTCHA_SITE_KEY: "${CAPTCHA_SITE_KEY:-}"
+    volumes:
+      - ./rust-engine/config:/etc/mini-protection:ro
     depends_on:
       kafka:
         condition: service_healthy

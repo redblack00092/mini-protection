@@ -18,8 +18,9 @@ RUN mkdir src && echo 'fn main() {}' > src/main.rs
 RUN cargo build --release || true
 RUN rm -rf src
 
-# 실제 소스 복사 후 빌드
+# 실제 소스 + 테스트 복사 후 빌드
 COPY src ./src
+COPY tests ./tests
 RUN touch src/main.rs && cargo build --release
 
 ##############################################################################

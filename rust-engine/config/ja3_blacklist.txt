@@ -1,0 +1,69 @@
+# JA3 Bot Blacklist
+# 출처: salesforce/ja3, trisulnsm/ja3prints, sslbl.abuse.ch, waf.ninja
+# 형식: <32자 MD5 해시>  # 레이블 (선택)
+# 주석(#)과 빈 줄은 무시됨
+
+# ── Python ──────────────────────────────────────────────────────────────────
+c398c55518355639c5a866c15784f969  # python-requests 2.4.3
+911479ac8a0813ed1241b3686ccdade9  # python-requests 2.11 (Debian 8 / Python 2.7.9)
+443dc2089573571e9e8a30d49e52572a  # Python urllib3 (Python 3.8)
+a48c0d5f95b1ef98f560f324fd275da1  # Python urllib3 (generic)
+
+# ── curl ────────────────────────────────────────────────────────────────────
+764b8952983230b0ac23dbd3741d2bb0  # curl 7.22 Linux
+9f198208a855994e1b8ec82c892b7d37  # curl 7.43 macOS
+c458ae71119005c8bc26d38a215af68f  # curl 7.35 Ubuntu/OpenSSL
+de4c3d0f370ff1dc78eccd89307bbb28  # curl 7.6x+ OpenSSL
+eaa1a9e1db47ffcca16305566a6efba4  # curl 7.68
+1fe4c7a3544eb27afec2adfb3a3dbf60  # curl 7.60 openSUSE 15
+e3b2ab1f9a56f2fb4c9248f2f41631fa  # curl 7.38 Debian 8
+d0df7f7c9ca173059b2cd17ce5c2e5cc  # curl 7.47.1 / Git-Bash Windows
+
+# ── wget ────────────────────────────────────────────────────────────────────
+94b94048a438e77122fc4eee3a6a4a26  # GNU Wget 1.16.1 Darwin
+40adfd923eb82b89d8836ba37a19bca1  # wget 1.19.4 Ubuntu 18.04
+
+# ── Node.js (Axios / node-fetch / got 모두 런타임 해시를 공유) ──────────────
+5d1b45c217fe17488ef0a688cf2cc497  # Node.js v10
+c4aac137ff0b0ac82f3c138cf174b427  # Node.js v12/14/16
+4c319ebb1fb1ef7937f04ac445bbdf86  # Node.js v17
+
+# ── Java ────────────────────────────────────────────────────────────────────
+2db6873021f2a95daa7de0d93a1d1bf2  # Java 8u91 / Apache HttpClient
+e7643725fcff971e3051fe0e47fc2c71  # Java 8u161/162 + Apache HttpClient 4.5
+d2935c58fe676744fecc8614ee5356c7  # Java 8u221+ + Apache HttpClient 4.5
+3afe1fb5976d0999abe833b14b7d6485  # Java (generic)
+550628650380ff418de25d3d890e836e  # Java (generic)
+5b270b309ad8c6478586a15dece20a88  # Java (generic)
+88afa0dea1608e28f50acbad32d7f195  # Java (generic)
+8ce6933b8c12ce931ca238e9420cc5dd  # Java (generic)
+
+# ── Nikto ───────────────────────────────────────────────────────────────────
+f4262963691a8f123d4434c7308ad7fe  # Nikto 2.1.6 Kali
+5eeeafdbc41e5ca7b81c92dbefa03ab7  # Nikto 2.1.6 Kali (variant)
+a563bb123396e545f5704a9a2d16bcb0  # Nikto v2.1.6
+
+# ── Metasploit ──────────────────────────────────────────────────────────────
+16f17c896273d1d098314a02e87dd4cb  # Metasploit HTTP scanner 4.11.5
+950ccdd64d360a7b24c70678ac116a44  # Metasploit CCS Scanner
+ee031b874122d97ab269e0d8740be31a  # Metasploit Heartbleed Scanner
+6825b330bf9de50ccc8745553cb61b2f  # Metasploit SSL Scanner
+
+# ── ZGrab / UMich Internet Scanner ──────────────────────────────────────────
+9a1c3fed39b016b8d81cc77dae70f60f  # ZGrab/UMich Scanner
+0e580f864235348848418123f96bbaa0  # ZGrab/UMich Scanner (variant)
+dc76bc3a4e3bc38939dfd90d8b7214b7  # ZGrab/UMich Scanner (variant)
+
+# ── Other scanners ──────────────────────────────────────────────────────────
+cfb6d1c72d09d4eaa4c7d2c0b1ecbce7  # SkipFish v2.10b Kali
+c3ca411515180e79c765dc2c3c8cea88  # BurpSuite Free 1.6.01
+93fbcdadc1bf98ff0e3c03e7f921edd1  # BurpSuite Free 1.6.01 (variant)
+34f8cac266d07bfc6bd3966e99b54d00  # BurpSuite Free 1.6.32 Kali
+c22dea495cef869edbeb3458adaf497f  # Rapid7 Nexpose
+24993abb75ddda7eaf0709395e47ab4e  # Tenable Nessus Passive Scanner
+
+# ── Shodan ──────────────────────────────────────────────────────────────────
+0b63812a99e66c82a20d30c3b9ba6e06  # Shodan
+f59a024cf47fdb835053ebf144189a47  # Shodan
+302579fd4ba13eca27932664f66725ad  # Shodan
+109dbd9238634b21363c3d62793c029c  # Shodan

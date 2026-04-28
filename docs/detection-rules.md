@@ -27,23 +27,45 @@
 
 ## Ja3FingerprintDetector
 
-X-JA3-Fingerprint 헤더 기반 TLS 지문 탐지. nginx-module-ja3 또는 OpenResty 필요.
-현재 HTTP 전용 환경에서는 헤더 미전달로 항상 Pass (하위 호환).
+OpenResty `ssl_client_hello_by_lua_block`에서 TLS ClientHello를 파싱해 JA3 해시를 계산하고
+`X-JA3-Fingerprint` 헤더로 rust-engine에 전달. 현재 활성화됨.
+
+**블랙리스트/화이트리스트는 파일로 관리** (`rust-engine/config/`):
+- `ja3_blacklist.txt` — 45개 봇 해시 (재시작 없이 파일만 수정 후 컨테이너 재시작으로 반영)
+- `ja3_whitelist.txt` — 29개 브라우저 해시
+
+**탐지 로직:**
 
 | 조건 | Action |
 |------|--------|
 | `X-JA3-Fingerprint` 헤더 없음 | Pass |
-| 알려진 봇 JA3 (`c398c55...` python-requests, `764b89...` curl 등) | Block |
-| 브라우저 UA + 화이트리스트 JA3 매칭 | Pass |
-| 브라우저 UA + 미등록 JA3 | Challenge (Chrome 110+/Firefox 114+ 랜덤화로 Block 시 오탐) |
-| 알 수 없는 UA + 미등록 JA3 | Challenge |
+| 블랙리스트 JA3 | Block (UA 무관) |
+| 화이트리스트 JA3 + 브라우저 UA | Pass |
+| 화이트리스트 JA3 + 비브라우저 UA | Challenge (브라우저 TLS 스택 스푸핑 의심) |
+| 미등록 JA3 + 브라우저 UA | Challenge (Chrome 110+/Firefox 114+ 랜덤화 가능성) |
+| 미등록 JA3 + 비브라우저 UA | Challenge |
 
-봇 블랙리스트 (TrisulNSM·ja3er.com 출처):
-- `c398c55518355639c5a866c15784f969` — python-requests 2.4.3
-- `a48c0d5f95b1ef98f560f324fd275da1` — Python urllib3
-- `764b8952983230b0ac23dbd3741d2bb0` — curl 7.22 Linux
-- `9f198208a855994e1b8ec82c892b7d37` — curl 7.43 macOS
-- `de4c3d0f370ff1dc78eccd89307bbb28` — curl 7.6x+ OpenSSL
+> 화이트리스트 단독 Pass를 쓰지 않는 이유: UA를 위조한 봇이 브라우저 TLS 스택을 흉내낼 경우 우회 가능.
+> 블랙리스트 + 브라우저 UA 조합에서도 블랙리스트가 우선 적용되어 Block됨.
+
+**블랙리스트 주요 항목** (전체 목록은 `ja3_blacklist.txt` 참고):
+
+| 카테고리 | 해시 예시 |
+|----------|-----------|
+| Python requests / urllib3 | `c398c55...`, `443dc20...`, `a48c0d5...` |
+| curl (버전별) | `764b895...`, `de4c3d0...`, `eaa1a9e...` 등 8개 |
+| wget | `94b9404...`, `40adfd9...` |
+| Node.js (Axios/node-fetch 공유) | `5d1b45c...`, `c4aac13...`, `4c319eb...` |
+| Java / Apache HttpClient | `2db6873...` 등 8개 |
+| Nikto | `f426296...` 등 3개 |
+| Metasploit | `16f17c8...` 등 4개 |
+| ZGrab / UMich Scanner | `9a1c3fe...` 등 3개 |
+| BurpSuite | `c3ca411...`, `34f8cac...` |
+| Rapid7 Nexpose / Nessus | `c22dea4...`, `24993ab...` |
+| Shodan | `0b63812...` 등 4개 |
+
+**공개 DB에 확정 해시 없는 도구:** Go net/http (Go 버전마다 변경), httpx, Scrapy, okhttp, Ruby net/http, PHP curl.
+**Masscan:** TLS 직접 구현 안 함 → JA3 미해당. **sqlmap:** Python urllib3 해시 공유.
 
 ## UserAgentDetector
 

@@ -1,0 +1,45 @@
+# JA3 Browser Whitelist
+# 출처: salesforce/ja3, trisulnsm/ja3prints, httptoolkit.com, hqcodeshop.fi
+# 형식: <32자 MD5 해시>  # 레이블 (선택)
+#
+# 주의: Chrome 110+ / Firefox 114+는 TLS extension 순서를 랜덤화하므로
+#       이 목록은 불완전하다. 화이트리스트 매칭 실패가 곧 Block이 되지 않는 이유.
+#       화이트리스트 JA3 + 브라우저 UA → Pass
+#       화이트리스트 JA3 + 비브라우저 UA → Challenge
+
+# ── Chrome ──────────────────────────────────────────────────────────────────
+c11ab92a9db8107e2a0b0486f35b80b9  # Chrome 124 Windows
+845db3b4e398789bdeb5b15594360a29  # Chrome 134 macOS
+66918128f1b9b03303d77c6f2eefd128  # Chrome 79 Windows
+b32309a26951912be7dba376398abc3b  # Chrome 97
+8b8322bad90e8bfbd66e664839b7a037  # Chrome 41.0.2272.89
+cd3f72760dfd5575b91213a8016c596b  # Chrome 48.0.2564.116
+503fe06db7ef09b2cbd771c4e784c686  # Chrome 49.0.2623.75
+aa9074aa1ff31c65d01c35b9764762b6  # Chrome 42.0.2311.135
+473e8bad0e8e1572197be80faa1795c3  # Chrome 51.0.2704.84
+bec8267042d5885aa3acc07b4409cafc  # Chrome iOS
+002205d0f96c37c5e660b9f041363c11  # Chrome (salesforce/ja3 OSX/Linux)
+6cd1b944f5885e2cfbe98a840b75eeb8  # Chrome (salesforce/ja3 OSX/Linux)
+94c485bca29d5392be53f2b8cf7f4304  # Chrome (salesforce/ja3 OSX/Linux)
+fd6314b03413399e4f23d1524d206692  # Chrome (salesforce/ja3 OSX/Linux)
+
+# ── Firefox ─────────────────────────────────────────────────────────────────
+2872afed8370401ec6fe92acb53e5301  # Firefox 40.0.3 / 37.0
+b20b44b18b853ef29ab773e921b03422  # Firefox 63.0 / 72 Windows
+1996e434b11323df4e87f8fe0e702209  # Firefox 49 TLSv1.3
+8ed0a2cdcad81fc29313910eb94941d8  # Firefox 49 TLSv1.3 (variant)
+2312b27cb2c9ea5cabb52845cafff423  # Firefox 94
+46129449560e5731dc9c5106f111a3db  # Firefox 46.0
+aa907c2c4720b6f54cd8b67a14cef0a3  # Firefox 47.x
+c57914fadb301a73e712378023b4b177  # Firefox 25.0
+
+# ── Safari ──────────────────────────────────────────────────────────────────
+cbcd1d81f242de31fd683d5acbc70dca  # Safari 525-534.57.2
+88770e3ad9e9d85b2e463be2b5c5a026  # Safari 537.78.2
+773906b0efdefa24a7f2b8eb6985bf37  # Safari 18.3 iOS
+cc5925c4720edb550491a12a35c15d4d  # Safari 537.71
+30701f5050d504c31805594fb5c083b8  # Safari 534.34
+c36fb08942cf19508c08d96af22d4ffc  # Safari (salesforce/ja3)
+
+# ── Edge ────────────────────────────────────────────────────────────────────
+8d2e46c9e2b1ee9b1503cab4905cb3e0  # MS Edge (Legacy / pre-Chromium)

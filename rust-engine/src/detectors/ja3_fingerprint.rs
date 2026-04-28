@@ -1,49 +1,60 @@
 use crate::packet::Packet;
 use crate::pipeline::detector::{DetectionResult, Detector};
+use std::collections::HashSet;
+use std::fs;
 
-// ── 봇 블랙리스트 ─────────────────────────────────────────────────────────
-// 출처: TrisulNSM/trisul-scripts, ja3er.com, security research
-// (hash, 라이브러리 레이블)
-const BOT_BLACKLIST: &[(&str, &str)] = &[
-    // python-requests / urllib3
-    ("c398c55518355639c5a866c15784f969", "python-requests 2.4.3"),
-    ("a48c0d5f95b1ef98f560f324fd275da1", "Python urllib3"),
-    // curl (OpenSSL 버전별)
-    ("764b8952983230b0ac23dbd3741d2bb0", "curl 7.22 Linux"),
-    ("9f198208a855994e1b8ec82c892b7d37", "curl 7.43 macOS"),
-    ("de4c3d0f370ff1dc78eccd89307bbb28", "curl 7.6x+ OpenSSL"),
-];
+const BLACKLIST_PATH: &str = "/etc/mini-protection/ja3_blacklist.txt";
+const WHITELIST_PATH: &str = "/etc/mini-protection/ja3_whitelist.txt";
 
-// ── 브라우저 화이트리스트 ──────────────────────────────────────────────────
-// Chrome 110+ / Firefox 114+는 TLS extension 순서를 랜덤화하므로
-// 이 목록은 불완전하다. 매칭 시 Pass를 주는 긍정 신호로만 사용한다.
-// 매칭 실패가 Block이 되지 않는 이유도 여기에 있다 (false positive 방지).
-const BROWSER_WHITELIST: &[&str] = &[
-    "c11ab92a9db8107e2a0b0486f35b80b9", // Chrome 124 Windows
-    "845db3b4e398789bdeb5b15594360a29", // Chrome 134 macOS
-    "b20b44b18b853ef29ab773e921b03422", // Firefox 63
-    "2872afed8370401ec6fe92acb53e5301", // Firefox 40
-    "773906b0efdefa24a7f2b8eb6985bf37", // Safari 18.3 iOS
-    "88770e3ad9e9d85b2e463be2b5c5a026", // Safari 537.78
-    "8d2e46c9e2b1ee9b1503cab4905cb3e0", // Edge
-];
+pub struct Ja3FingerprintDetector {
+    blacklist: HashSet<String>,
+    whitelist: HashSet<String>,
+}
 
-// ── Ja3FingerprintDetector ────────────────────────────────────────────────
+fn load_set(path: &str) -> HashSet<String> {
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("JA3 list not loaded from {path}: {e}");
+            return HashSet::new();
+        }
+    };
+    content
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                return None;
+            }
+            let hash = line.split_whitespace().next()?;
+            (hash.len() == 32).then(|| hash.to_string())
+        })
+        .collect()
+}
 
-/// X-JA3-Fingerprint 헤더를 기반으로 봇을 탐지한다.
-///
-/// 탐지 순서:
-/// 1. JA3 헤더 없음 → Pass (nginx JA3 모듈 미설정 환경 호환)
-/// 2. 알려진 봇 JA3 → Block
-/// 3. 브라우저 UA + 화이트리스트 JA3 → Pass
-/// 4. 브라우저 UA + 미등록 JA3 → Challenge
-///    (Chrome 110+/Firefox 114+는 extension 순서 랜덤화 → Block 시 false positive 급증)
-/// 5. 알 수 없는 UA + 미등록 JA3 → Challenge
-pub struct Ja3FingerprintDetector;
+fn is_browser_ua(ua: &str) -> bool {
+    ua.contains("Mozilla/5.0")
+        && (ua.contains("Chrome/")
+            || ua.contains("Firefox/")
+            || ua.contains("Safari/")
+            || ua.contains("Edg/"))
+}
 
 impl Ja3FingerprintDetector {
     pub fn new() -> Self {
-        Self
+        let blacklist = load_set(BLACKLIST_PATH);
+        let whitelist = load_set(WHITELIST_PATH);
+        tracing::info!(
+            "JA3 loaded: {} blacklist, {} whitelist entries",
+            blacklist.len(),
+            whitelist.len()
+        );
+        Self { blacklist, whitelist }
+    }
+
+    #[cfg(test)]
+    fn with_sets(blacklist: HashSet<String>, whitelist: HashSet<String>) -> Self {
+        Self { blacklist, whitelist }
     }
 }
 
@@ -54,54 +65,34 @@ impl Detector for Ja3FingerprintDetector {
 
     fn detect(&self, packet: &Packet) -> DetectionResult {
         let ja3 = match &packet.ja3_fingerprint {
-            None => return DetectionResult::pass(),
-            Some(h) => h.as_str(),
+            Some(h) if !h.is_empty() => h.as_str(),
+            _ => return DetectionResult::pass(),
         };
 
-        // 1. 봇 블랙리스트 체크
-        for &(hash, label) in BOT_BLACKLIST {
-            if ja3 == hash {
-                return DetectionResult::block(
-                    format!("Blacklisted JA3 fingerprint: {ja3} ({label})"),
-                    1.0,
-                );
-            }
+        // 1. 블랙리스트 → Block
+        if self.blacklist.contains(ja3) {
+            return DetectionResult::block(format!("Blacklisted JA3: {ja3}"), 1.0);
         }
 
-        // 2. 브라우저 화이트리스트 — 긍정 신호
-        if BROWSER_WHITELIST.contains(&ja3) {
+        // 2. 화이트리스트 + 브라우저 UA → Pass
+        //    화이트리스트만으로 Pass 시 UA를 위조한 봇이 우회 가능하므로 UA 검증 추가
+        if self.whitelist.contains(ja3) && is_browser_ua(&packet.user_agent) {
             return DetectionResult::pass();
         }
 
-        // 3. UA/JA3 일관성 체크
-        // 봇이 브라우저 UA를 위장해도 JA3는 위조하기 어렵다.
-        // 단, 현대 브라우저(Chrome 110+/Firefox 114+)는 JA3를 랜덤화하므로
-        // Block 대신 Challenge를 사용해 false positive를 줄인다.
-        if is_browser_ua(&packet.user_agent) {
-            return DetectionResult::challenge(
-                format!(
-                    "UA/JA3 mismatch: claims browser but JA3 ({ja3}) not in whitelist"
-                ),
-                0.5,
-            );
-        }
-
-        // 4. 알 수 없는 UA + 미등록 JA3 → Challenge
-        DetectionResult::challenge(
-            format!("Unknown UA and JA3 combination: {ja3}"),
-            0.4,
-        )
+        // 3. 나머지 → Challenge
+        //    - 화이트리스트 JA3 + 비브라우저 UA: 브라우저 TLS를 흉내낸 봇 의심
+        //    - 미등록 JA3 + 브라우저 UA: Chrome 110+/Firefox 114+ 랜덤화 가능성
+        //    - 미등록 JA3 + 비브라우저 UA: 알 수 없는 클라이언트
+        let reason = if self.whitelist.contains(ja3) {
+            format!("JA3 in whitelist but non-browser UA: {ja3}")
+        } else if is_browser_ua(&packet.user_agent) {
+            format!("Browser UA but JA3 ({ja3}) not in whitelist")
+        } else {
+            format!("Unknown UA and JA3: {ja3}")
+        };
+        DetectionResult::challenge(reason, 0.5)
     }
-}
-
-/// Mozilla/5.0 기반 주요 브라우저 UA인지 빠르게 확인한다.
-/// String 할당 없는 `contains` 체인으로 zero-copy 판별.
-fn is_browser_ua(ua: &str) -> bool {
-    ua.contains("Mozilla/5.0")
-        && (ua.contains("Chrome/")
-            || ua.contains("Firefox/")
-            || ua.contains("Safari/")
-            || ua.contains("Edg/"))
 }
 
 #[cfg(test)]
