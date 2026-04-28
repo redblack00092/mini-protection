@@ -110,6 +110,10 @@ fn is_hop_by_hop(name: &str) -> bool {
     )
 }
 
+const SENSITIVE_HEADERS: &[&str] = &[
+    "cookie", "authorization", "x-api-key", "x-auth-token", "proxy-authorization",
+];
+
 fn send_kafka_event(
     state: &AppState,
     src_ip: IpAddr,
@@ -117,7 +121,19 @@ fn send_kafka_event(
     reason: &str,
     confidence: f32,
     action: &'static str,
+    packet: Option<&Packet>,
 ) {
+    let (method, http_version, req_headers) = match packet {
+        Some(pkt) => {
+            let headers = pkt.headers.iter()
+                .filter(|(name, _)| !SENSITIVE_HEADERS.contains(&name.as_str()))
+                .map(|(name, value)| [name.clone(), value.clone()])
+                .collect();
+            (pkt.method.clone(), pkt.http_version.clone(), headers)
+        }
+        None => (String::new(), String::new(), vec![]),
+    };
+
     let event = DetectionEvent {
         timestamp: now_secs(),
         src_ip: src_ip.to_string(),
@@ -126,6 +142,9 @@ fn send_kafka_event(
         action: action.to_string(),
         reason: reason.to_string(),
         confidence,
+        method,
+        http_version,
+        req_headers,
     };
     let kafka = Arc::clone(&state.kafka);
     tokio::spawn(async move {
@@ -220,7 +239,7 @@ async fn honeypot_trap_handler(
     let src_ip = extract_ip(&headers, peer);
     state.honeypot_caught.insert(src_ip, ());
     tracing::info!(ip = %src_ip, "HONEYPOT: bot trapped");
-    send_kafka_event(&state, src_ip, "/__mini-protection/trap", "Honeypot trap accessed", 1.0, "Block");
+    send_kafka_event(&state, src_ip, "/__mini-protection/trap", "Honeypot trap accessed", 1.0, "Block", None);
     StatusCode::NOT_FOUND.into_response()
 }
 
@@ -333,12 +352,12 @@ async fn proxy_handler(
         Action::Pass => proxy_upstream(&state, parts, body_bytes).await,
         Action::Block => {
             tracing::info!(ip = %src_ip, uri = %packet.uri, reason = %result.reason, "BLOCK");
-            send_kafka_event(&state, src_ip, &packet.uri, &result.reason, result.confidence, "Block");
+            send_kafka_event(&state, src_ip, &packet.uri, &result.reason, result.confidence, "Block", Some(&packet));
             block_response(&result.reason)
         }
         Action::Challenge => {
             tracing::info!(ip = %src_ip, uri = %packet.uri, reason = %result.reason, "CHALLENGE");
-            send_kafka_event(&state, src_ip, &packet.uri, &result.reason, result.confidence, "Challenge");
+            send_kafka_event(&state, src_ip, &packet.uri, &result.reason, result.confidence, "Challenge", Some(&packet));
             js_challenge_response(&packet.uri)
         }
         Action::Captcha => {
@@ -346,7 +365,7 @@ async fn proxy_handler(
                 proxy_upstream(&state, parts, body_bytes).await
             } else {
                 tracing::info!(ip = %src_ip, uri = %packet.uri, reason = %result.reason, "CAPTCHA");
-                send_kafka_event(&state, src_ip, &packet.uri, &result.reason, result.confidence, "Captcha");
+                send_kafka_event(&state, src_ip, &packet.uri, &result.reason, result.confidence, "Captcha", Some(&packet));
                 captcha_response(&packet.uri, &state.cfg.captcha_site_key)
             }
         }

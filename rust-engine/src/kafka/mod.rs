@@ -24,6 +24,12 @@ pub struct DetectionEvent {
     pub reason: String,
     /// 신뢰도 0.0 ~ 1.0
     pub confidence: f32,
+    /// HTTP 메서드 (GET, POST 등). 패킷 정보 없을 시 빈 문자열.
+    pub method: String,
+    /// HTTP 버전 (예: HTTP/1.1). 패킷 정보 없을 시 빈 문자열.
+    pub http_version: String,
+    /// 요청 헤더 목록 [[name, value], ...]. 민감 헤더(cookie, authorization 등) 제외.
+    pub req_headers: Vec<[String; 2]>,
 }
 
 // ── KafkaProducer ─────────────────────────────────────────────────────────

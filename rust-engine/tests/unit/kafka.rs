@@ -10,6 +10,9 @@ fn detection_event_serializes_to_json() {
         action: "Block".to_string(),
         reason: "IP rate limit exceeded".to_string(),
         confidence: 1.0,
+        method: "POST".to_string(),
+        http_version: "HTTP/1.1".to_string(),
+        req_headers: vec![["user-agent".to_string(), "python-requests/2.31.0".to_string()]],
     };
 
     let json = serde_json::to_string(&event).unwrap();
@@ -29,6 +32,9 @@ fn detection_event_all_fields_present() {
         action: "Block".to_string(),
         reason: "distributed attack".to_string(),
         confidence: 0.95,
+        method: "POST".to_string(),
+        http_version: "HTTP/1.1".to_string(),
+        req_headers: vec![],
     };
 
     let json = serde_json::to_string(&event).unwrap();
